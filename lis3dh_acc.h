@@ -30,7 +30,7 @@ enum lis3dh_registers {
     CTRL_REG5,
     CTRL_REG6,
     REFERENCE,
-    STATUS_REG2,
+    STATUS_REG,
     OUT_X_L,
     OUT_X_H,
     OUT_Y_L,

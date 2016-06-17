@@ -11,8 +11,8 @@
 
 struct lx_accell_private_data {
     struct i2c_client *client;
-    int i2c_addr;
-    char *test;
+    s16 acc[3];
+    int read_count;
 };
 
 /* Utilities*/
@@ -70,6 +70,8 @@ static int lx_accell_device_open(struct inode *inode, struct file *file)
 
     printk("Reading device pdata=%p\n", pdata);
 
+    pdata->read_count = 0;
+
     return 0;
 }
 
@@ -81,25 +83,35 @@ static int lx_accell_device_release(struct inode *inode, struct file *file)
 
 /* Todo: block until the data has changed */
 static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
-			   size_t length, loff_t *offset)
+                                                size_t length, loff_t *offset)
 {
     struct lx_accell_private_data *pdata = misc_get_drvdata(file);
 
     if (pdata && pdata->client && pdata->client->adapter) {
-        u8 i2c_data[] = {
-            (I2C_AUTO_INCREMENT | OUT_X_L),
-            0, 0, 0, 0, 0
-        };
-        int status = lx_accell_i2c_read(pdata->client, i2c_data, 6);
-        if (status >= 0) {
-	    s16 axis[3] = {0, 0, 0};
-            axis[0] = (((s16) ((i2c_data[1] << 8) | i2c_data[0])) >> 4);
-            axis[1] = (((s16) ((i2c_data[3] << 8) | i2c_data[2])) >> 4);
-            axis[2] = (((s16) ((i2c_data[5] << 8) | i2c_data[4])) >> 4);
-            printk("Acceleration: %d, %d, %d\n", axis[0], axis[1], axis[2]);
-	    length = snprintf(buffer, length, "%d, %d, %d\n", axis[0], axis[1], axis[2]);
-	    return length+1; /* Including trailing '\0' */
+        /* Read STATUS byte to see if previous acceleraion value has been updated */
+        u8 i2c_data[6] = { STATUS_REG, 0, 0, 0, 0, 0};
+        int status = lx_accell_i2c_read(pdata->client, i2c_data, 1);
+        if (i2c_data[0]) {
+            /* Acceleration value has changed - read again */
+            i2c_data[0] = (I2C_AUTO_INCREMENT | OUT_X_L);
+            status = lx_accell_i2c_read(pdata->client, i2c_data, 6);
+            if (status >= 0) {
+                pdata->acc[0] = (((s16) ((i2c_data[1] << 8) | i2c_data[0])) >> 4);
+                pdata->acc[1] = (((s16) ((i2c_data[3] << 8) | i2c_data[2])) >> 4);
+                pdata->acc[2] = (((s16) ((i2c_data[5] << 8) | i2c_data[4])) >> 4);
+                printk("Acceleration: %d, %d, %d\n", pdata->acc[0], pdata->acc[1], pdata->acc[2]);
+            }
         }
+
+        /* Enforce only one read operation, then sending EOF
+        it would force 'cat' command line to terminate */
+        pdata->read_count++;
+        if (pdata->read_count == 1) {
+            length = snprintf(buffer, length, "%d,%d,%d\n", pdata->acc[0], pdata->acc[1], pdata->acc[2]);
+        } else {
+            length = 0; /* Force EOF */
+        }
+        return length;
     }
 
     return -EIO;;
