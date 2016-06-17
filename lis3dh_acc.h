@@ -3,6 +3,7 @@
 
 #define I2C_ADDR_PRIMARY     (0x18)
 #define I2C_ADDR_SECONDARY   (0x19)
+#define I2C_AUTO_INCREMENT   (0x80) /* MSB on 8 bits address */
 #define WHO_AM_I_OUTPUT      (0x33)
 
 

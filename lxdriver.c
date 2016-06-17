@@ -15,6 +15,7 @@ struct lx_accell_private_data {
     char *test;
 };
 
+/* Utilities*/
 static void misc_set_drvdata(struct miscdevice *misc, void *pdata)
 {
     if (misc && misc->this_device) {
@@ -30,54 +31,6 @@ static void *misc_get_drvdata(struct file *file)
     }
     return NULL;
 }
-
-static int lx_accell_device_open(struct inode *inode, struct file *file)
-{
-    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
-
-    printk("Reading device pdata=%p\n", pdata);
-
-    return 0;
-}
-
-static int lx_accell_device_release(struct inode *inode, struct file *file)
-{
-    printk("Closing device\n");
-    return 0;
-}
-
-static ssize_t lx_accell_device_read(struct file *file, char __user * buffer,
-			   size_t length, loff_t * offset)
-{
-    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
-
-    printk("Reading device (%d bytes) pdata=%p\n", length, pdata);
-
-    return length; /* But we don't actually do anything with the data */
-}
-
-static ssize_t lx_accell_device_write(struct file *file, const char __user *buffer,
-		       size_t length, loff_t *offset)
-{
-    printk("Writting device (%d bytes)\n", length);
-    return length; /* But we don't actually do anything with the data */
-}
-
-static const struct file_operations lx_accell_device_operations = {
-    .owner              = THIS_MODULE,
-    .read               = lx_accell_device_read,
-    .write              = lx_accell_device_write,
-    .open               = lx_accell_device_open,
-    .release            = lx_accell_device_release
-};
-
-struct miscdevice lx_accell_device = {
-    .minor = MISC_DYNAMIC_MINOR,
-    .name = LX_ACCELL_DRIVER_DEV_NAME,
-    .fops = &lx_accell_device_operations,
-    .parent = NULL,
-    .this_device = NULL
-};
 
 static int lx_accell_i2c_read(struct i2c_client *client, u8 *buffer, size_t length)
 {
@@ -110,6 +63,69 @@ static int lx_accell_i2c_write(struct i2c_client *client, u8 *buffer, size_t len
     };
     return i2c_transfer(client->adapter, packets, 1);
 }
+
+static int lx_accell_device_open(struct inode *inode, struct file *file)
+{
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+
+    printk("Reading device pdata=%p\n", pdata);
+
+    return 0;
+}
+
+static int lx_accell_device_release(struct inode *inode, struct file *file)
+{
+    printk("Closing device\n");
+    return 0;
+}
+
+static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
+			   size_t length, loff_t *offset)
+{
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+
+    if (pdata && pdata->client && pdata->client->adapter) {
+        u8 i2c_data[] = {
+            (I2C_AUTO_INCREMENT | OUT_X_L),
+            0, 0, 0, 0, 0
+        };
+        int status = lx_accell_i2c_read(pdata->client, i2c_data, 6);
+        if (status >= 0) {
+	    s16 axis[3] = {0, 0, 0};
+            axis[0] = (((s16) ((i2c_data[1] << 8) | i2c_data[0])) >> 4);
+            axis[1] = (((s16) ((i2c_data[3] << 8) | i2c_data[2])) >> 4);
+            axis[2] = (((s16) ((i2c_data[5] << 8) | i2c_data[4])) >> 4);
+            printk("Acceleration: %d, %d, %d\n", axis[0], axis[1], axis[2]);
+	    length = snprintf(buffer, length, "%d, %d, %d\n", axis[0], axis[1], axis[2]);
+	    return length+1; /* Including trailing '\0' */
+        }
+    }
+
+    return -EIO;;
+}
+
+static ssize_t lx_accell_device_write(struct file *file, const char __user *buffer,
+		       size_t length, loff_t *offset)
+{
+    printk("Writting device (%d bytes)\n", length);
+    return length; /* But we don't actually do anything with the data */
+}
+
+static const struct file_operations lx_accell_device_operations = {
+    .owner              = THIS_MODULE,
+    .read               = lx_accell_device_read,
+    .write              = lx_accell_device_write,
+    .open               = lx_accell_device_open,
+    .release            = lx_accell_device_release
+};
+
+struct miscdevice lx_accell_device = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = LX_ACCELL_DRIVER_DEV_NAME,
+    .fops = &lx_accell_device_operations,
+    .parent = NULL,
+    .this_device = NULL
+};
 
 static int lx_accell_i2c_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
