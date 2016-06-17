@@ -3,20 +3,46 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
+#include <linux/slab.h>
 
 #define LX_ACCELL_DRIVER_DEV_NAME "lxaccell"
 
-#define LIS3DH_ID 0x33
-#define LIS3DH_ADDR_PRIMARY 0x18
-#define LIS3DH_ADDR_SECONDARY 0x19
+#define LIS3DH_ID               0x33
+#define LIS3DH_ADDR_PRIMARY     0x18
+#define LIS3DH_ADDR_SECONDARY   0x19
+
 
 /* LIS3DH registers */
-#define WHO_AM_I 0x0F
+#define WHO_AM_I                0x0F
 
+struct lx_accell_private_data {
+    struct i2c_client *client;
+    int i2c_addr;
+    char *test;
+};
+
+static void misc_set_drvdata(struct miscdevice *misc, void *pdata)
+{
+    if (misc) {
+        dev_set_drvdata(misc->this_device, pdata);
+    }
+};
+
+static void *misc_get_drvdata(struct file *file)
+{
+    struct miscdevice *misc = file->private_data;
+    if (misc && misc->this_device) {
+        return dev_get_drvdata(misc->this_device);
+    }
+    return NULL;
+}
 
 static int lx_accell_device_open(struct inode *inode, struct file *file)
 {
-    printk("Opening device\n");
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+
+    printk("Reading device pdata=%p\n", pdata);
+
     return 0;
 }
 
@@ -29,7 +55,10 @@ static int lx_accell_device_release(struct inode *inode, struct file *file)
 static ssize_t lx_accell_device_read(struct file *file, char __user * buffer,
 			   size_t length, loff_t * offset)
 {
-    printk("Reading device (%d bytes)\n", length);
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+
+    printk("Reading device (%d bytes) pdata=%p\n", length, pdata);
+
     return length; /* But we don't actually do anything with the data */
 }
 
@@ -51,19 +80,42 @@ static const struct file_operations lx_accell_device_operations = {
 struct miscdevice lx_accell_device = {
     .minor = MISC_DYNAMIC_MINOR,
     .name = LX_ACCELL_DRIVER_DEV_NAME,
-    .fops = &lx_accell_device_operations,
+    .fops = &lx_accell_device_operations
 };
 
 static int lx_accell_i2c_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
-    printk("Inside i2c_probe (adapter=%p)\n", client->adapter);
+    struct lx_accell_private_data *pdata;
+    int error;
+
+    pdata = kmalloc(sizeof(struct lx_accell_private_data), GFP_KERNEL);
+    if (pdata) {
+	pdata->client = client;
+        i2c_set_clientdata(client, pdata);
+    }
+
+    error = misc_register(&lx_accell_device);
+    if (error) {
+        printk("Failed to register device %s\n", LX_ACCELL_DRIVER_DEV_NAME);
+        return error;
+    }
+
+    misc_set_drvdata(&lx_accell_device, pdata);
+
     return 0;
 }
 
 static int lx_accell_i2c_remove(struct i2c_client *client)
 {
+    void *pdata = i2c_get_clientdata(client);
+
+    misc_deregister(&lx_accell_device);
+
     printk("Inside i2c_remove\n");
+    if (pdata)
+        kfree(pdata);
+
     return 0;
 }
 
@@ -84,7 +136,7 @@ static int lx_accell_i2c_detect(struct i2c_client *client, struct i2c_board_info
              .flags = I2C_M_RD,
              .len = 1,
              .buf = buf,
-        },
+        }
     };
     printk("Inside i2c_detect i2c_board_info: addr=%x, adapter=%p\n", info->addr, client->adapter);
 
@@ -102,7 +154,6 @@ static int lx_accell_i2c_detect(struct i2c_client *client, struct i2c_board_info
     } else {
         printk("I2C feature not enabled?\n");
     }
-
 
     return 0;
 }
@@ -139,11 +190,6 @@ static int __init lx_driver_init(void)
     int error;
 
     printk("LX Driver init\n");
-    error = misc_register(&lx_accell_device);
-    if (error) {
-        printk("Failed to register device %s\n", LX_ACCELL_DRIVER_DEV_NAME);
-        return error;
-    }
 
     error = i2c_add_driver(&lx_accell_i2c_driver);
     if (error) {
@@ -157,7 +203,6 @@ static int __init lx_driver_init(void)
 
 static void __exit lx_driver_exit(void)
 {
-    misc_deregister(&lx_accell_device);
     i2c_del_driver(&lx_accell_i2c_driver);
     printk("LX Driver exit\n");
 }

@@ -1,4 +1,4 @@
-# Linux kernel driver for accelerometer chip LIS3DH
+# Linux kernel driver for accelerometer LIS3DH
 
 ## Hardware
 
@@ -8,6 +8,7 @@ For convenience, we are using [Adafruit LIS3DH breakout](https://learn.adafruit.
 The accelerometer chip is connected through the I2C bus.
 
 The adafruit LIS3DH is connected as follow
+
 Adafruit pin | BBB pin | Name
 --- | --- | ---
 Vin | 4 | VDD_3V3
