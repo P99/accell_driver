@@ -5,7 +5,11 @@
 #define I2C_ADDR_SECONDARY   (0x19)
 #define I2C_AUTO_INCREMENT   (0x80) /* MSB on 8 bits address */
 #define WHO_AM_I_OUTPUT      (0x33)
-
+#define POWER_ON_50_HZ       (0x47) /* 0b01000111
+                                       > 0100----: (ODR) Normal / low power mode (50 Hz)
+                                       > ----1---: Low power mode enabled
+                                       > -----111: XYZ axis enabled */
+#define POWER_OFF            (0x00)
 
 /* LIS3DH registers */
 enum lis3dh_registers {

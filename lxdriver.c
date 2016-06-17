@@ -79,6 +79,7 @@ static int lx_accell_device_release(struct inode *inode, struct file *file)
     return 0;
 }
 
+/* Todo: block until the data has changed */
 static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
 			   size_t length, loff_t *offset)
 {
@@ -132,6 +133,10 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
 {
     struct lx_accell_private_data *pdata;
     int error;
+    u8 i2c_power_on[] = {
+        CTRL_REG1,
+        POWER_ON_50_HZ
+    };
 
     pdata = kmalloc(sizeof(struct lx_accell_private_data), GFP_KERNEL);
     if (pdata) {
@@ -147,12 +152,22 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
 
     misc_set_drvdata(&lx_accell_device, pdata);
 
+    /* Wake up the accelerometer */
+    lx_accell_i2c_write(client, i2c_power_on, sizeof(i2c_power_on) / sizeof(u8));
+
     return 0;
 }
 
 static int lx_accell_i2c_remove(struct i2c_client *client)
 {
     void *pdata = i2c_get_clientdata(client);
+    u8 i2c_power_off[] = {
+        CTRL_REG1,
+        POWER_OFF
+    };
+
+    /* Accelerometer can go back to sleep*/
+    lx_accell_i2c_write(client, i2c_power_off, sizeof(i2c_power_off) / sizeof(u8));
 
     misc_deregister(&lx_accell_device);
 
