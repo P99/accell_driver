@@ -5,15 +5,9 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 
+#include "lis3dh_acc.h"
+
 #define LX_ACCELL_DRIVER_DEV_NAME "lxaccell"
-
-#define LIS3DH_ID               0x33
-#define LIS3DH_ADDR_PRIMARY     0x18
-#define LIS3DH_ADDR_SECONDARY   0x19
-
-
-/* LIS3DH registers */
-#define WHO_AM_I                0x0F
 
 struct lx_accell_private_data {
     struct i2c_client *client;
@@ -23,7 +17,7 @@ struct lx_accell_private_data {
 
 static void misc_set_drvdata(struct miscdevice *misc, void *pdata)
 {
-    if (misc) {
+    if (misc && misc->this_device) {
         dev_set_drvdata(misc->this_device, pdata);
     }
 };
@@ -80,8 +74,42 @@ static const struct file_operations lx_accell_device_operations = {
 struct miscdevice lx_accell_device = {
     .minor = MISC_DYNAMIC_MINOR,
     .name = LX_ACCELL_DRIVER_DEV_NAME,
-    .fops = &lx_accell_device_operations
+    .fops = &lx_accell_device_operations,
+    .parent = NULL,
+    .this_device = NULL
 };
+
+static int lx_accell_i2c_read(struct i2c_client *client, u8 *buffer, size_t length)
+{
+    struct i2c_msg packets[] = {
+        {
+            .addr = client->addr,
+            .flags = 0,
+            .len = 1,
+            .buf = buffer,
+         },
+         {
+             .addr = client->addr,
+             .flags = I2C_M_RD,
+             .len = length,
+             .buf = buffer,
+        }
+    };
+    return i2c_transfer(client->adapter, packets, 2);
+}
+
+static int lx_accell_i2c_write(struct i2c_client *client, u8 *buffer, size_t length)
+{
+    struct i2c_msg packets[] = {
+        {
+            .addr = client->addr,
+            .flags = 0,
+            .len = length,
+            .buf = buffer,
+         }
+    };
+    return i2c_transfer(client->adapter, packets, 1);
+}
 
 static int lx_accell_i2c_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
@@ -121,36 +149,23 @@ static int lx_accell_i2c_remove(struct i2c_client *client)
 
 static int lx_accell_i2c_detect(struct i2c_client *client, struct i2c_board_info *info)
 {
-    int status = -1;
-    u8 buf[] = {WHO_AM_I};
-
-    struct i2c_msg msgs[] = {
-        {
-            .addr = info->addr,
-            .flags = 0,
-            .len = 1,
-            .buf = buf,
-         },
-         {
-             .addr = info->addr,
-             .flags = I2C_M_RD,
-             .len = 1,
-             .buf = buf,
-        }
-    };
     printk("Inside i2c_detect i2c_board_info: addr=%x, adapter=%p\n", info->addr, client->adapter);
 
     if (i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-        status = i2c_transfer(client->adapter, msgs, 2);
+        u8 buffer[] = {WHO_AM_I};
+        int status = lx_accell_i2c_read(client, buffer, 1);
+
         printk("i2c_transfer returned status: %d\n", status);
 
         if (status == 2) {
-            printk("Success reading: 0x%x (expecting 0x%x)\n", buf[0], LIS3DH_ID);
-            if (buf[0] == LIS3DH_ID) {
+            printk("Success checking device identity\n");
+            if (buffer[0] == WHO_AM_I_OUTPUT) {
                 /* Success: Proceed to probe() */
                 strcpy(info->type, LX_ACCELL_DRIVER_DEV_NAME);
             }
-        }
+        } else {
+	    printk("Failed to identify the device (read: 0x%x, expected 0x%x)\n", buffer[0], WHO_AM_I_OUTPUT);
+	}
     } else {
         printk("I2C feature not enabled?\n");
     }
@@ -166,8 +181,8 @@ static const struct i2c_device_id lx_accell_i2c_driver_id[] = {
 MODULE_DEVICE_TABLE(i2c, lx_accell_i2c_driver_id);
 
 const unsigned short lx_accell_i2c_address_list[] = {
-    LIS3DH_ADDR_PRIMARY,
-    LIS3DH_ADDR_SECONDARY
+    I2C_ADDR_PRIMARY,
+    I2C_ADDR_SECONDARY
 };
 
 static struct i2c_driver lx_accell_i2c_driver = {
