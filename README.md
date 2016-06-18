@@ -56,10 +56,10 @@ The I2C bus is already up and running on the original debian image, so you don't
 Here is a quick hack to get you up and running:
 
 1. On the board, install the kernel headers:
-  root@beaglebone:~# sudo apt-get install linux-headers-`uname -r`
+  ```root@beaglebone:~# sudo apt-get install linux-headers-\`uname -r\````
 
 2. Then copy over all the headers: (modifiy the kernel version accordingly)
-  scp -r root@bbb:/usr/src/linux-headers-3.8.13-bone70 .
+  ```scp -r root@bbb:/usr/src/linux-headers-3.8.13-bone70 .```
 
 3. Replace linux-headers-3.8.13-bone70/scripts by a cross-compiled version of your own
   Grab the cross-toochain on [linaro](http://releases.linaro.org/components/toolchain/binaries/4.9-2016.02/arm-linux-gnueabihf/) website
@@ -70,3 +70,19 @@ Here is a quick hack to get you up and running:
 ## Details
 
 ### I2C autodetect
+
+It doesn't matter where you plugged the accelerometer device, you can use auto-detect feature.
+While registering the `i2c_driver` structure:
+```c
+    /* For auto-detect*/
+    .class		= I2C_CLASS_HWMON,
+    .detect		= driver_i2c_detect,
+    .address_list	= driver_i2c_address_list
+```
+
+The kernel will iterate each i2c bus, try to find your device then call then `.detect` callback
+
+This callback you identify the device (using WHO_I_AM for instance) and unpon succefull identification fill the i2c_board_info structure
+```c
+strcpy(info->type, YOUR_DEVICE_NAME);
+```
