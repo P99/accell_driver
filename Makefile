@@ -1,5 +1,5 @@
-obj-m = lxdriver2.o
-lxdriver2-objs = lxdriver.o lis3dh_acc.o
+obj-m = lxdriver.o
+lxdriver-objs = lx_acc_driver.o lis3dh_acc.o
 
 KDIR := linux-headers-3.8.13-bone70
 ARCH := arm
