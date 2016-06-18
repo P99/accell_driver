@@ -51,4 +51,9 @@ enum lis3dh_registers {
     TIME_WINDOW
 };
 
+int lis3dh_acc_identify(struct i2c_client *client);
+int lis3dh_acc_power_on(struct i2c_client *client);
+int lis3dh_acc_power_off(struct i2c_client *client);
+int lis3dh_acc_get_acceleration(struct i2c_client *client, s16 *axis);
+
 #endif /*_LIS3DH_ACC_H_ */

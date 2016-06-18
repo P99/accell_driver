@@ -8,11 +8,13 @@
 #include "lis3dh_acc.h"
 
 #define LX_ACCELL_DRIVER_DEV_NAME "lxaccell"
+#define LX_ACCELL_GPIO_INT1 49
 
 struct lx_accell_private_data {
     struct i2c_client *client;
     s16 acc[3];
     int read_count;
+    int irq;
 };
 
 /* Utilities*/
@@ -30,38 +32,6 @@ static void *misc_get_drvdata(struct file *file)
         return dev_get_drvdata(misc->this_device);
     }
     return NULL;
-}
-
-static int lx_accell_i2c_read(struct i2c_client *client, u8 *buffer, size_t length)
-{
-    struct i2c_msg packets[] = {
-        {
-            .addr = client->addr,
-            .flags = 0,
-            .len = 1,
-            .buf = buffer,
-         },
-         {
-             .addr = client->addr,
-             .flags = I2C_M_RD,
-             .len = length,
-             .buf = buffer,
-        }
-    };
-    return i2c_transfer(client->adapter, packets, 2);
-}
-
-static int lx_accell_i2c_write(struct i2c_client *client, u8 *buffer, size_t length)
-{
-    struct i2c_msg packets[] = {
-        {
-            .addr = client->addr,
-            .flags = 0,
-            .len = length,
-            .buf = buffer,
-         }
-    };
-    return i2c_transfer(client->adapter, packets, 1);
 }
 
 static int lx_accell_device_open(struct inode *inode, struct file *file)
@@ -88,20 +58,7 @@ static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
     struct lx_accell_private_data *pdata = misc_get_drvdata(file);
 
     if (pdata && pdata->client && pdata->client->adapter) {
-        /* Read STATUS byte to see if previous acceleraion value has been updated */
-        u8 i2c_data[6] = { STATUS_REG, 0, 0, 0, 0, 0};
-        int status = lx_accell_i2c_read(pdata->client, i2c_data, 1);
-        if (i2c_data[0]) {
-            /* Acceleration value has changed - read again */
-            i2c_data[0] = (I2C_AUTO_INCREMENT | OUT_X_L);
-            status = lx_accell_i2c_read(pdata->client, i2c_data, 6);
-            if (status >= 0) {
-                pdata->acc[0] = (((s16) ((i2c_data[1] << 8) | i2c_data[0])) >> 4);
-                pdata->acc[1] = (((s16) ((i2c_data[3] << 8) | i2c_data[2])) >> 4);
-                pdata->acc[2] = (((s16) ((i2c_data[5] << 8) | i2c_data[4])) >> 4);
-                printk("Acceleration: %d, %d, %d\n", pdata->acc[0], pdata->acc[1], pdata->acc[2]);
-            }
-        }
+	lis3dh_acc_get_acceleration(pdata->client, pdata->acc);
 
         /* Enforce only one read operation, then sending EOF
         it would force 'cat' command line to terminate */
@@ -145,10 +102,6 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
 {
     struct lx_accell_private_data *pdata;
     int error;
-    u8 i2c_power_on[] = {
-        CTRL_REG1,
-        POWER_ON_50_HZ
-    };
 
     pdata = kmalloc(sizeof(struct lx_accell_private_data), GFP_KERNEL);
     if (pdata) {
@@ -165,7 +118,7 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
     misc_set_drvdata(&lx_accell_device, pdata);
 
     /* Wake up the accelerometer */
-    lx_accell_i2c_write(client, i2c_power_on, sizeof(i2c_power_on) / sizeof(u8));
+    lis3dh_acc_power_on(client);
 
     return 0;
 }
@@ -173,14 +126,8 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
 static int lx_accell_i2c_remove(struct i2c_client *client)
 {
     void *pdata = i2c_get_clientdata(client);
-    u8 i2c_power_off[] = {
-        CTRL_REG1,
-        POWER_OFF
-    };
 
-    /* Accelerometer can go back to sleep*/
-    lx_accell_i2c_write(client, i2c_power_off, sizeof(i2c_power_off) / sizeof(u8));
-
+    lis3dh_acc_power_off(client);
     misc_deregister(&lx_accell_device);
 
     printk("Inside i2c_remove\n");
@@ -194,23 +141,9 @@ static int lx_accell_i2c_detect(struct i2c_client *client, struct i2c_board_info
 {
     printk("Inside i2c_detect i2c_board_info: addr=%x, adapter=%p\n", info->addr, client->adapter);
 
-    if (i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-        u8 buffer[] = {WHO_AM_I};
-        int status = lx_accell_i2c_read(client, buffer, 1);
-
-        printk("i2c_transfer returned status: %d\n", status);
-
-        if (status == 2) {
-            printk("Success checking device identity\n");
-            if (buffer[0] == WHO_AM_I_OUTPUT) {
-                /* Success: Proceed to probe() */
-                strcpy(info->type, LX_ACCELL_DRIVER_DEV_NAME);
-            }
-        } else {
-	    printk("Failed to identify the device (read: 0x%x, expected 0x%x)\n", buffer[0], WHO_AM_I_OUTPUT);
-	}
-    } else {
-        printk("I2C feature not enabled?\n");
+    if (i2c_check_functionality(client->adapter, I2C_FUNC_I2C)
+	    && lis3dh_acc_identify(client)) {
+	strcpy(info->type, LX_ACCELL_DRIVER_DEV_NAME);
     }
 
     return 0;
