@@ -1,5 +1,5 @@
 #include <linux/i2c.h>
-#include <linux/module.h>
+#include <linux/delay.h>
 
 #include "lis3dh_acc.h"
 
@@ -73,8 +73,12 @@ int lis3dh_acc_get_acceleration(struct i2c_client *client, s16 *axis)
     int status;
     u8 i2c_data[6] = { STATUS_REG, 0, 0, 0, 0, 0};
     status = lis3dh_acc_i2c_read(client, i2c_data, 1);
-    if (axis && i2c_data[0]) {
-        /* Acceleration value has changed - read again */
+    if (!i2c_data[0]) {
+	/* Acceleration value has not changed, just wait */
+        msleep_interruptible(CONFIG_RETRY_MS);
+    }
+    if (axis) {
+        /* Get fresh acceleration value */
         i2c_data[0] = (I2C_AUTO_INCREMENT | OUT_X_L);
         status = lis3dh_acc_i2c_read(client, i2c_data, 6);
         if (status >= 0) {

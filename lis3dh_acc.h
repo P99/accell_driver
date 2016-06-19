@@ -11,6 +11,8 @@
                                        > -----111: XYZ axis enabled */
 #define POWER_OFF            (0x00)
 
+#define CONFIG_RETRY_MS        (40) /* Value in ms (slightly about 50Hz period) */
+
 /* LIS3DH registers */
 enum lis3dh_registers {
     STATUS_REG_AUX = 0x07,

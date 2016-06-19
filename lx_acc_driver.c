@@ -13,7 +13,6 @@
 struct lx_accell_private_data {
     struct i2c_client *client;
     s16 acc[3];
-    int read_count;
     int irq;
 };
 
@@ -40,8 +39,6 @@ static int lx_accell_device_open(struct inode *inode, struct file *file)
 
     printk("Reading device pdata=%p\n", pdata);
 
-    pdata->read_count = 0;
-
     return 0;
 }
 
@@ -51,27 +48,18 @@ static int lx_accell_device_release(struct inode *inode, struct file *file)
     return 0;
 }
 
-/* Todo: block until the data has changed */
 static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
                                                 size_t length, loff_t *offset)
 {
+    int status = 0;
     struct lx_accell_private_data *pdata = misc_get_drvdata(file);
 
     if (pdata && pdata->client && pdata->client->adapter) {
-	lis3dh_acc_get_acceleration(pdata->client, pdata->acc);
-
-        /* Enforce only one read operation, then sending EOF
-        it would force 'cat' command line to terminate */
-        pdata->read_count++;
-        if (pdata->read_count == 1) {
-            length = snprintf(buffer, length, "%d,%d,%d\n", pdata->acc[0], pdata->acc[1], pdata->acc[2]);
-        } else {
-            length = 0; /* Force EOF */
-        }
-        return length;
+	status = lis3dh_acc_get_acceleration(pdata->client, pdata->acc);
+	length = snprintf(buffer, length, "%d,%d,%d\n", pdata->acc[0], pdata->acc[1], pdata->acc[2]);
     }
 
-    return -EIO;;
+    return (status ? length : -EIO);
 }
 
 static ssize_t lx_accell_device_write(struct file *file, const char __user *buffer,
