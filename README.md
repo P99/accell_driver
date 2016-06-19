@@ -125,8 +125,11 @@ Don't forget this bus is shared with other devices! Not good.
 In such case, the trick is to block the calling process.
 
  * Entering the .read callback
+ 
  ** Check the STATUS register if new data is available:
+ 
  *** Yes ? Grab the new data immediately and return
+ 
  *** No ? Wait for 50ms, then grab the data
 
 This is good but is could be a problem if a program always want to grab the data imediately, this is where Async operations becomes handy
@@ -134,8 +137,11 @@ This is good but is could be a problem if a program always want to grab the data
 Check out the demo app:
 
  * Open the device
+ 
  ** Set the ASYNC flag
+ 
  *** Call `sigwait()`
+ 
  **** Read the device, go back to wait next message
 
 When a message is sent by the kernel, sigwait return and you can grab the data immediately!
