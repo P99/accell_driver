@@ -80,9 +80,9 @@ While registering the `i2c_driver` structure:
     .address_list	= driver_i2c_address_list
 ```
 
-The kernel will iterate each i2c bus, try to find your device then call then `.detect` callback
+The kernel will iterate each i2c bus, trying to find your device. Then invoking the `.detect` callback
 
-This callback you identify the device (using WHO_I_AM for instance) and unpon succefull identification fill the i2c_board_info structure
+In this callback you have to identify the device (using WHO_I_AM for instance). Upon succefull identification, you have to fill the i2c_board_info structure
 ```c
 strcpy(info->type, YOUR_DEVICE_NAME);
 ```
