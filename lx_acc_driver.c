@@ -4,6 +4,9 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
+#include <linux/gpio.h>
+#include <linux/irq.h>
+#include <linux/interrupt.h>
 
 #include "lis3dh_acc.h"
 
@@ -14,6 +17,7 @@ struct lx_accell_private_data {
     struct i2c_client *client;
     s16 acc[3];
     int irq;
+    struct fasync_struct *async_queue;
 };
 
 /* Utilities*/
@@ -33,18 +37,63 @@ static void *misc_get_drvdata(struct file *file)
     return NULL;
 }
 
+irqreturn_t lx_accell_interrupt(int irq, void *context)
+{
+    struct lx_accell_private_data *pdata = context;
+    printk(">>>>>> Inside interupt handler <<<<<<<\n");
+
+    if (pdata->async_queue) {
+       kill_fasync(&pdata->async_queue, SIGIO, POLL_IN);
+    }
+    return IRQ_HANDLED;
+}
+
+static int lx_accell_install_irq(struct lx_accell_private_data *pdata)
+{
+    int status;
+    printk("GPIO %d is valid? %s\n", LX_ACCELL_GPIO_INT1, gpio_is_valid(LX_ACCELL_GPIO_INT1) ? "yes" : "no");
+    gpio_request(LX_ACCELL_GPIO_INT1, "sysfs");
+    gpio_direction_input(LX_ACCELL_GPIO_INT1);
+    gpio_export(LX_ACCELL_GPIO_INT1, false);
+
+    pdata->irq = gpio_to_irq(LX_ACCELL_GPIO_INT1);
+    printk("GPIO %d mapped to IRQ %d\n", LX_ACCELL_GPIO_INT1, pdata->irq);
+
+    status = request_irq(pdata->irq, lx_accell_interrupt, IRQF_TRIGGER_RISING, "lx_accell", pdata);
+    if (status) {
+        printk("Failed to install IRQ handler (status=%d)\n", status);
+    }
+
+    lis3dh_acc_int1_enable(pdata->client);
+    return (status >= 0);
+}
+
+static void lx_accell_remove_irq(struct lx_accell_private_data *pdata)
+{
+    free_irq(pdata->irq, NULL);
+    gpio_unexport(LX_ACCELL_GPIO_INT1);
+    gpio_free(LX_ACCELL_GPIO_INT1);
+}
+
+static int lx_accell_device_fasync(int fd, struct file *file, int mode)
+{
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+    printk("Inside async\n");
+    return fasync_helper(fd, file, mode, &pdata->async_queue);
+}
+
 static int lx_accell_device_open(struct inode *inode, struct file *file)
 {
     struct lx_accell_private_data *pdata = misc_get_drvdata(file);
-
     printk("Reading device pdata=%p\n", pdata);
-
     return 0;
 }
 
 static int lx_accell_device_release(struct inode *inode, struct file *file)
 {
     printk("Closing device\n");
+    /* removing this file from async queue */
+    lx_accell_device_fasync(-1, file, 0);
     return 0;
 }
 
@@ -65,8 +114,13 @@ static ssize_t lx_accell_device_read(struct file *file, char __user *buffer,
 static ssize_t lx_accell_device_write(struct file *file, const char __user *buffer,
 		       size_t length, loff_t *offset)
 {
-    printk("Writting device (%d bytes)\n", length);
-    return length; /* But we don't actually do anything with the data */
+    struct lx_accell_private_data *pdata = misc_get_drvdata(file);
+    unsigned long threshold = 0;
+    if (strstr(buffer, "db,") && !kstrtoul(buffer+3, 0, &threshold)) {
+        printk("Applying new threshold: %lu\n", threshold);
+        lis3dh_acc_int1_set_threshold(pdata->client, threshold);
+    }
+    return length;
 }
 
 static const struct file_operations lx_accell_device_operations = {
@@ -74,7 +128,8 @@ static const struct file_operations lx_accell_device_operations = {
     .read               = lx_accell_device_read,
     .write              = lx_accell_device_write,
     .open               = lx_accell_device_open,
-    .release            = lx_accell_device_release
+    .release            = lx_accell_device_release,
+    .fasync             = lx_accell_device_fasync
 };
 
 struct miscdevice lx_accell_device = {
@@ -91,7 +146,7 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
     struct lx_accell_private_data *pdata;
     int error;
 
-    pdata = kmalloc(sizeof(struct lx_accell_private_data), GFP_KERNEL);
+    pdata = kzalloc(sizeof(struct lx_accell_private_data), GFP_KERNEL);
     if (pdata) {
 	pdata->client = client;
         i2c_set_clientdata(client, pdata);
@@ -108,6 +163,9 @@ static int lx_accell_i2c_probe(struct i2c_client *client,
     /* Wake up the accelerometer */
     lis3dh_acc_power_on(client);
 
+    /* Setup IRQ for motion detection */
+    lx_accell_install_irq(pdata);
+
     return 0;
 }
 
@@ -116,6 +174,7 @@ static int lx_accell_i2c_remove(struct i2c_client *client)
     void *pdata = i2c_get_clientdata(client);
 
     lis3dh_acc_power_off(client);
+    lx_accell_remove_irq(pdata);
     misc_deregister(&lx_accell_device);
 
     printk("Inside i2c_remove\n");

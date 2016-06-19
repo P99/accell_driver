@@ -11,7 +11,14 @@
                                        > -----111: XYZ axis enabled */
 #define POWER_OFF            (0x00)
 
-#define CONFIG_RETRY_MS        (40) /* Value in ms (slightly about 50Hz period) */
+#define CONFIG_RETRY_MS      (40)   /* 40 ms (slightly about 50Hz period) */
+
+#define CONFIG_CTRL_REG3     (0x40) /* 0b01000000: AOI1 interrupt on INT1 */
+#define CONFIG_INT1_ENABLE   (0x3f) /* 0b00111111
+                                       > 00------: OR Combination of interruots events
+                                       > --111111: XYZ Low / hight enabled */
+#define CONFIG_INT1_THS      (0x02) /* Arbitrary */
+#define CONFIG_INT1_DURATION (0x40) /* Arbitrary */
 
 /* LIS3DH registers */
 enum lis3dh_registers {
@@ -56,6 +63,8 @@ enum lis3dh_registers {
 int lis3dh_acc_identify(struct i2c_client *client);
 int lis3dh_acc_power_on(struct i2c_client *client);
 int lis3dh_acc_power_off(struct i2c_client *client);
+int lis3dh_acc_int1_enable(struct i2c_client *client);
+int lis3dh_acc_int1_set_threshold(struct i2c_client *client, int threshold);
 int lis3dh_acc_get_acceleration(struct i2c_client *client, s16 *axis);
 
 #endif /*_LIS3DH_ACC_H_ */
