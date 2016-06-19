@@ -126,7 +126,7 @@ In such case, the trick is to block the calling process.
 
  * Entering the .read callback
  
-  * Check the STATUS register if new data is available:
+ * Check the STATUS register if new data is available:
  
    * Yes ? Grab the new data immediately and return
  
@@ -138,11 +138,11 @@ Check out the demo app:
 
  * Open the device
  
-  * Set the ASYNC flag
+ * Set the ASYNC flag
  
-   * Call `sigwait()`
+ * Call `sigwait()`
  
-    * Read the device, go back to wait next message
+ * Read the device, go back to wait next message
 
 When a message is sent by the kernel, sigwait return and you can grab the data immediately!
 
