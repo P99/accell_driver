@@ -109,9 +109,7 @@ While registering the `i2c_driver` structure:
 ```
 
 The kernel will iterate each i2c bus, trying to find your device. Then the `.detect` callback is called.
-
 In this callback you have to identify the device (using WHO_I_AM for instance).
-
 Upon succefull identification, you have to fill the i2c_board_info structure
 ```c
 strcpy(info->type, YOUR_DEVICE_NAME);
@@ -120,33 +118,25 @@ strcpy(info->type, YOUR_DEVICE_NAME);
 ## Blocking vs async IO operations
 
 You can try to issue `cat /dev/lxaccell` and see what happend.
-
 The `cat` command keeps reading a large amount of bytes and would issues new calls till reaching EndOfFile.
-
 Problem is: the accelerometer device is issuing new data at a specific rate (confiurable).
-
 You can then request the same data endlessly and this is a problem because it would keep the I2C bus very busy.
-
 Don't forget this bus is shared with other devices! Not good.
-
 In such case, the trick is to block the calling process.
 
-*Entering the .read callback
-
-**Check the STATUS register if new data is available:
-
-***Yes ? Grab the new data immediately and return
-
-***No ? Wait for 50ms, then grab the data
+* Entering the .read callback
+** Check the STATUS register if new data is available:
+*** Yes ? Grab the new data immediately and return
+*** No ? Wait for 50ms, then grab the data
 
 This is good but is could be a problem if a program always want to grab the data imediately, this is where Async operations becomes handy
 
 Check out the demo app:
 
-*Open the device
-**Set the ASYNC flag
-***Call `sigwait()`
-****Read the device, go back to wait next message
+* Open the device
+** Set the ASYNC flag
+*** Call `sigwait()`
+**** Read the device, go back to wait next message
 
 When a message is sent by the kernel, sigwait return and you can grab the data immediately!
 
