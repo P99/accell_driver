@@ -1,6 +1,6 @@
 # Linux kernel driver for LIS3DH accelerometer
 
-*The driver should showcase I2C communications and blocking IO versus async messages*
+*The driver should showcase I2C communications and blocking vs Async IO*
 
 ## Hardware
 
@@ -55,20 +55,42 @@ Here is a quick hack to get you up and running:
 2. Then copy over all the headers: (modifiy the kernel version accordingly)
   ```scp -r root@bbb:/usr/src/linux-headers-3.8.13-bone70 .```
 
-3. Replace linux-headers-3.8.13-bone70/scripts by a cross-compiled version of your own
+3. Replace linux-headers-3.8.13-bone70/scripts by a x86 version of your own
   Grab the cross-toochain on [linaro](http://releases.linaro.org/components/toolchain/binaries/4.9-2016.02/arm-linux-gnueabihf/) website
 
 4. Then, the classic `make` (cross-compiling for ARM)
   make
+
+5. Copy the kernel module + sample application to the target
+```
+scp lxdriver.ko root@bbb:/root
+scp lxapp root@bbb:/root
+ssh root@bbb
+root@beaglebone:~# insmod lxdriver.ko
+root@beaglebone:~# cat /dev/lxaccell
+root@beaglebone:~# <CTRL-C>
+root@beaglebone:~# ./lxapp
+root@beaglebone:~# ./lxapp
+Usage: ./lxapp [THRESHOLD]
+ -> Threshold defaults to 100
+Waiting for acceleration data
+-1052,-152,8
+-844,-468,228
+-1032,-224,-72
+-1052,-116,0
+-816,-224,220
+```
   
 
 # Design
+
+## Declaring a misc device
 
 The driver is a misc device so we don't have to care about finding a suitable "MINOR_VERSION" for the module
 
 We are using a simple character device "lxaccell" to read acceleration values on three axis (X, Y, Z)
 
-The device will be created automatically while inserting the kernel module. No need to mess up with `mknod`
+The device is created automatically while inserting the kernel module. No need to mess up with `mknod`
 
 The driver registers an i2c driver interface. Upon successfull recognition of the accelerometer chip, the misc device is created.
 
@@ -99,30 +121,32 @@ strcpy(info->type, YOUR_DEVICE_NAME);
 
 You can try to issue `cat /dev/lxaccell` and see what happend.
 
-The `cat` keeps reading a large amount of bytes and would issues new calls till reaching EndOfFile.
+The `cat` command keeps reading a large amount of bytes and would issues new calls till reaching EndOfFile.
 
-The things is the accelerometer device is issuing new data at a specific rate.
+Problem is: the accelerometer device is issuing new data at a specific rate (confiurable).
 
 You can then request the same data endlessly and this is a problem because it would keep the I2C bus very busy.
 
 Don't forget this bus is shared with other devices! Not good.
 
-In the case, the trick is to block the calling process.
+In such case, the trick is to block the calling process.
 
-.Entering the .read callback
+*Entering the .read callback
 
-..Check the STATUS register if new data is available:
+**Check the STATUS register if new data is available:
 
-...Yes ? Grab the new data immediately and return
+***Yes ? Grab the new data immediately and return
 
-...No ? Wait for 50ms, then grab the data
+***No ? Wait for 50ms, then grab the data
 
 This is good but is could be a problem if a program always want to grab the data imediately, this is where Async operations becomes handy
 
 Check out the demo app:
 
-.Open the device
-..Set the ASYNC flag
-...Call `sigwait()`
-....When a message is sent by the kernel, sigwait return and you can grab the data immediately!
+*Open the device
+**Set the ASYNC flag
+***Call `sigwait()`
+****Read the device, go back to wait next message
+
+When a message is sent by the kernel, sigwait return and you can grab the data immediately!
 
