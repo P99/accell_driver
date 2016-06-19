@@ -124,25 +124,25 @@ You can then request the same data endlessly and this is a problem because it wo
 Don't forget this bus is shared with other devices! Not good.
 In such case, the trick is to block the calling process.
 
-* Entering the .read callback
+ * Entering the .read callback
  
-** Check the STATUS register if new data is available:
+  * Check the STATUS register if new data is available:
  
-*** Yes ? Grab the new data immediately and return
+   * Yes ? Grab the new data immediately and return
  
-*** No ? Wait for 50ms, then grab the data
+   * No ? Wait for 50ms, then grab the data
 
 This is good but is could be a problem if a program always want to grab the data imediately, this is where Async operations becomes handy
 
 Check out the demo app:
 
-* Open the device
+ * Open the device
  
-** Set the ASYNC flag
+  * Set the ASYNC flag
  
-*** Call `sigwait()`
+   * Call `sigwait()`
  
-**** Read the device, go back to wait next message
+    * Read the device, go back to wait next message
 
 When a message is sent by the kernel, sigwait return and you can grab the data immediately!
 
